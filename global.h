@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <deque>
 #include <ctime>
+#include <vector>
 
 #include <fstream>
 

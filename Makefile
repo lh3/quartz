@@ -1,32 +1,21 @@
-IDIR=.
-CC=g++
-LIB=/home/ywy/bin/lib
-#CFLAGS=-I${IDIR} -I/usr/local/includes -std=c++11 -L${LIB} -Wall -O3 -DNDEBUG
-CFLAGS=-I${IDIR} -I/home/ywy/bin/include -std=c++11 -pipe -L${LIB} -Wall -O3 -DNDEBUG -fopenmp \
-#CFLAGS=-I${IDIR} -I/home/ywy/bin/include -std=c++11 -pipe -march=native -L${LIB} -Wall -O3 -DNDEBUG -fopenmp \
-# -pg \
-	   #-ftree-vectorizer-verbose=2
+CXX=		g++
+CXXFLAGS=	-std=c++11 -pipe -Wall -O3 -fopenmp
+CPPFLAGS=	-DNDEBUG
+OBJS=		library.o jumpgate.o
 
-OBJS = $(patsubst %.cpp,%.o,$(wildcard *.cpp))
+all:quartz
 
-all: ${OBJS} misra_gries_dict dict_txt2bin sort_dict_file quartz 
-	echo "All made."
+quartz:quartz.o $(OBJS)
+		$(CXX) -D_GLIBCXX_PARALLEL -o $@ $(CXXFLAGS) $(OBJS) quartz.o
 
-quartz: quartz.o library.o jumpgate.o jumpgate.h
-	${CC} -D_GLIBCXX_PARALLEL -o $@ ${CFLAGS} $@.o library.o jumpgate.o
-
-sort_dict_file: sort_dict_file.o library.o jumpgate.o
-	${CC} -D_GLIBCXX_PARALLEL -o $@ ${CFLAGS} $@.o library.o jumpgate.o
-
-misra_gries_dict: misra_gries_dict.o
-	${CC} -o $@ ${CFLAGS} $@.o
-
-dict_txt2bin: dict_txt2bin.o library.o
-	${CC} -o $@ ${CFLAGS} $@.o library.o
-
-%.o: %.cpp 
-	${CC} ${CFLAGS} -c -o $@ $<
+depend:
+		(LC_ALL=C; export LC_ALL; makedepend -Y -- $(CPPFLAGS) $(CXXFLAGS) -- *.cpp *.c)
 
 clean:
-	rm -f quartz misra_gries_dict dict_txt2bin ${OBJS} sort_dict_file 
-	@echo "All cleaned up!"
+		rm -f quartz *.o
+
+# DO NOT DELETE
+
+jumpgate.o: global.h jumpgate.h
+library.o: global.h
+quartz.o: global.h jumpgate.h
