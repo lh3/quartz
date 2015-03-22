@@ -87,6 +87,7 @@ qz_infile_t *qz_open(const char *fn, int is_bam)
 	} else {
 		f->bam = fn && strcmp(fn, "-")? bgzf_open(fn, "r") : bgzf_dopen(fileno(stdin), "r");
 		f->hdr = bam_hdr_read(f->bam);
+		f->b = bam_init1();
 	}
 	return f;
 }
@@ -174,7 +175,7 @@ static void *worker_pipeline(void *shared, int step, void *in) // kt_pipeline() 
 	if (step == 0) { // step 0: read lines into the buffer
 		step_t *s;
 		s = (step_t*)calloc(1, sizeof(step_t));
-		s->rec = (qz_record_t*)calloc(s->n_rec, sizeof(qz_record_t));
+		s->rec = (qz_record_t*)calloc(p->chunk_size, sizeof(qz_record_t));
 		s->p = p;
 		for (s->n_rec = 0; s->n_rec < p->chunk_size; ++s->n_rec)
 			if (qz_read(p->in, &s->rec[s->n_rec]) < 0) break;
@@ -216,24 +217,25 @@ int main(int argc, char *argv[])
 	p.qual = 'S'; p.n_threads = 1; p.chunk_size = 1000000;
 	while ((c = getopt(argc, argv, "q:t:bln:")) >= 0) {
 		if (c == 'l') lowmem = true;
+		else if (c == 'b') p.is_bam = 1;
 		else if (c == 'q') p.qual = 33 + atoi(optarg);
 		else if (c == 't') p.n_threads = atoi(optarg);
 		else if (c == 'n') p.chunk_size = atoi(optarg);
 	}
 	if (optind + 2 > argc) return usage(stderr);
 
-	std::string dict_filename = argv[optind];
-	read_entry_database red_whole(dict_filename, lowmem);
-	p.red = &red_whole;
+	p.red = new read_entry_database(argv[optind], lowmem);
 	p.in = qz_open(argv[optind+1], p.is_bam);
 	p.out = (qz_outfile_t*)calloc(1, sizeof(qz_outfile_t));
 	if (p.is_bam) {
 		p.out->fp = bgzf_dopen(fileno(stdout), "w");
 		bam_hdr_write(p.out->fp, p.in->hdr);
 	}
-	kt_pipeline(p.n_threads, worker_pipeline, &p, 3);
-	qz_close(p.in);
+	kt_pipeline(2, worker_pipeline, &p, 3);
 	if (p.is_bam) bgzf_close(p.out->fp);
 	else free(p.out->str.s);
+	free(p.out);
+	qz_close(p.in);
+	delete p.red;
 	return 0;
 }
