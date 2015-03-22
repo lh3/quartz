@@ -23,7 +23,7 @@ clean:
 
 jumpgate.o: global.h jumpgate.h
 library.o: global.h
-quartz.o: global.h jumpgate.h
+quartz.o: global.h jumpgate.h sam.h bgzf.h hts.h kstring.h kseq.h
 bgzf.o: bgzf.h
 hts.o: bgzf.h hts.h kseq.h khash.h ksort.h
 sam.o: sam.h bgzf.h hts.h khash.h kseq.h kstring.h
