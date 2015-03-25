@@ -50,6 +50,7 @@ void compute_alter_this(bool *alter_this, char *str, read_entry_database &red) {
 
 #include <zlib.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <string.h>
 #include <unistd.h>
 #include "sam.h"
@@ -105,18 +106,28 @@ void qz_close(qz_infile_t *f)
 
 int qz_read(qz_infile_t *f, qz_record_t *r)
 {
-	int ret = -1;
+	int ret = -1, i;
 	if (f->fq) {
 		ret = kseq_read(f->fq);
 		if (ret >= 0) {
 			r->name = strdup(f->fq->name.s);
 			r->seq = strdup(f->fq->seq.s);
-			r->qual = strdup(f->fq->qual.s);
+			if (f->fq->qual.s == 0) {
+				r->qual = (char*)calloc(f->fq->seq.l + 1, 1);
+				for (i = 0; i < (int)f->fq->seq.l; ++i)
+					r->qual[i] = 53;
+			} else r->qual = strdup(f->fq->qual.s);
+			for (i = 0; i < (int)f->fq->seq.l; ++i)
+				r->seq[i] = toupper(r->seq[i]);
 		}
 	} else if (f->bam) {
 		ret = bam_read1(f->bam, f->b);
 		if (ret >= 0) {
+			const uint8_t *seq = bam_get_seq(f->b);
 			r->b = (bam1_t*)calloc(1, sizeof(bam1_t));
+			r->seq = (char*)calloc(f->b->core.l_qseq + 1, 1);
+			for (i = 0; i < f->b->core.l_qseq; ++i)
+				r->seq[i] = seq_nt16_str[bam_seqi(seq, i)];
 			bam_copy1(r->b, f->b);
 		}
 	}
@@ -125,7 +136,7 @@ int qz_read(qz_infile_t *f, qz_record_t *r)
 
 void qz_write_free(qz_outfile_t *f, qz_record_t *r)
 {
-	if (!r->b) {
+	if (r->b) {
 		bam_write1(f->fp, r->b);
 		bam_destroy1(r->b);
 		free(r->seq);
@@ -185,8 +196,9 @@ static void *worker_pipeline(void *shared, int step, void *in) // kt_pipeline() 
 		return in;
 	} else if (step == 2) { // step 2: write the buffer to output
 		step_t *s = (step_t*)in;
-		while (--s->n_rec > 0)
-			qz_write_free(p->out, &s->rec[s->n_rec]);
+		int i;
+		for (i = 0; i < (int)s->n_rec; ++i)
+			qz_write_free(p->out, &s->rec[i]);
 		free(s->rec); free(s);
 	}
 	return 0;
@@ -211,12 +223,13 @@ int main(int argc, char *argv[])
 	subst_find(0,0);
 
     bool lowmem = false;
-	int c;
+	int c, debug = 0;
 	pipeline_t p;
 	memset(&p, 0, sizeof(pipeline_t));
 	p.qual = 'S'; p.n_threads = 1; p.chunk_size = 1000000;
-	while ((c = getopt(argc, argv, "q:t:bln:")) >= 0) {
+	while ((c = getopt(argc, argv, "dq:t:bln:")) >= 0) {
 		if (c == 'l') lowmem = true;
+		else if (c == 'd') debug = 1;
 		else if (c == 'b') p.is_bam = 1;
 		else if (c == 'q') p.qual = 33 + atoi(optarg);
 		else if (c == 't') p.n_threads = atoi(optarg);
@@ -224,14 +237,15 @@ int main(int argc, char *argv[])
 	}
 	if (optind + 2 > argc) return usage(stderr);
 
-	p.red = new read_entry_database(argv[optind], lowmem);
+	p.red = debug? 0 : new read_entry_database(argv[optind], lowmem);
 	p.in = qz_open(argv[optind+1], p.is_bam);
 	p.out = (qz_outfile_t*)calloc(1, sizeof(qz_outfile_t));
 	if (p.is_bam) {
 		p.out->fp = bgzf_dopen(fileno(stdout), "w");
+		bgzf_mt(p.out->fp, 2, 256);
 		bam_hdr_write(p.out->fp, p.in->hdr);
 	}
-	kt_pipeline(2, worker_pipeline, &p, 3);
+	kt_pipeline(3, worker_pipeline, &p, 3);
 	if (p.is_bam) bgzf_close(p.out->fp);
 	else free(p.out->str.s);
 	free(p.out);
