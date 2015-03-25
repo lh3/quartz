@@ -3,18 +3,19 @@
  * Sparsifies the quality vector for a read based on k-mer distance from dictionary
 */
 
+#include <ctype.h>
 #include "global.h"
 #include "jumpgate.h"
 
 // Populates alter_this with the correct places based on the read specified in string
-void compute_alter_this(bool *alter_this, char *str, read_entry_database &red) {
+void compute_alter_this(char *str, read_entry_database &red) {
 	readseq a;
 	int lasty;
 	std::vector<readseq> mer_list;
 	mer_list = encode_read_vector(str);
 	lasty=-100;
 	for (unsigned int y=0; y<mer_list.size(); ++y) {
-		if (((alter_this[y])||(y-lasty<16))&&(!(y==(mer_list.size()-1)))) {
+		if ((islower(str[y])||(y-lasty<16))&&(!(y==(mer_list.size()-1)))) {
 			// Silently do nothing
 		} else {
 			a = mer_list[y];
@@ -40,9 +41,9 @@ void compute_alter_this(bool *alter_this, char *str, read_entry_database &red) {
 					if (*it >= 0)
 						locations[*it]=1;
 				}
-				for (int x=0; x<32; ++x) {
-					alter_this[x+y] = alter_this[x+y] || !(locations[x]);
-				}
+				for (int x = 0; x < 32; ++x)
+					if (!locations[x])
+						str[x+y] = tolower(str[x+y]);
 			}
 		}
 	}
@@ -50,7 +51,6 @@ void compute_alter_this(bool *alter_this, char *str, read_entry_database &red) {
 
 #include <zlib.h>
 #include <stdio.h>
-#include <ctype.h>
 #include <string.h>
 #include <unistd.h>
 #include "sam.h"
@@ -151,8 +151,21 @@ void qz_write_free(qz_outfile_t *f, qz_record_t *r)
 	}
 }
 
-void qz_alter(qz_record_t *r, read_entry_database &red)
+void qz_alter(qz_record_t *r, read_entry_database *red, int qual)
 {
+	int i;
+	compute_alter_this(r->seq, *red);
+	if (r->b) {
+		uint8_t *q = bam_get_qual(r->b);
+		for (i = 0; i < (int)r->b->core.l_qseq; ++i)
+			q[i] = qual - 33;
+	} else {
+		int l;
+		l = strlen(r->seq);
+		for (i = 0; i < l; ++i)
+			if (islower(r->seq[i]))
+				r->qual[i] = qual;
+	}
 }
 
 extern "C" {
@@ -177,7 +190,7 @@ static void worker_for(void *_data, long i, int tid) // kt_for() callback
 {
 	step_t *step = (step_t*)_data;
 	qz_record_t *r = &step->rec[i];
-	qz_alter(r, *step->p->red);
+	if (step->p->red) qz_alter(r, step->p->red, step->p->qual);
 }
 
 static void *worker_pipeline(void *shared, int step, void *in) // kt_pipeline() callback
@@ -245,7 +258,7 @@ int main(int argc, char *argv[])
 		bgzf_mt(p.out->fp, 2, 256);
 		bam_hdr_write(p.out->fp, p.in->hdr);
 	}
-	kt_pipeline(3, worker_pipeline, &p, 3);
+	kt_pipeline(2, worker_pipeline, &p, 3);
 	if (p.is_bam) bgzf_close(p.out->fp);
 	else free(p.out->str.s);
 	free(p.out);
