@@ -100,7 +100,10 @@ void qz_close(qz_infile_t *f)
 		bam_hdr_destroy(f->hdr);
 		bgzf_close(f->bam);
 	}
-	if (f->fq) gzclose(f->fq->f->f);
+	if (f->fq) {
+		gzclose(f->fq->f->f);
+		kseq_destroy(f->fq);
+	}
 	free(f);
 }
 
@@ -204,6 +207,7 @@ static void *worker_pipeline(void *shared, int step, void *in) // kt_pipeline() 
 		for (s->n_rec = 0; s->n_rec < p->chunk_size; ++s->n_rec)
 			if (qz_read(p->in, &s->rec[s->n_rec]) < 0) break;
 		if (s->n_rec) return s;
+		free(s->rec); free(s);
 	} else if (step == 1) { // step 1: reverse lines
 		kt_for(p->n_threads, worker_for, in, ((step_t*)in)->n_rec);
 		return in;

@@ -1,7 +1,7 @@
 CXX=		g++
-CXXFLAGS=	-std=c++11 -pipe -Wall -O3 -fopenmp
+CXXFLAGS=	-g -std=c++11 -pipe -Wall -fopenmp -O3
 CC=			gcc
-CFLAGS=		-O2 -Wall
+CFLAGS=		-g -O2 -Wall
 CPPFLAGS=	-DNDEBUG -DBGZF_MT
 OBJS=		library.o jumpgate.o kthread.o bgzf.o hts.o sam.o
 
