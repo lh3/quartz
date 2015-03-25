@@ -161,7 +161,8 @@ void qz_alter(qz_record_t *r, read_entry_database *red, int qual)
 	if (r->b) {
 		uint8_t *q = bam_get_qual(r->b);
 		for (i = 0; i < (int)r->b->core.l_qseq; ++i)
-			q[i] = qual - 33;
+			if (islower(r->seq[i]))
+				q[i] = qual - 33;
 	} else {
 		int l;
 		l = strlen(r->seq);
